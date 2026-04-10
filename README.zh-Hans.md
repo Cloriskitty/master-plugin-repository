@@ -39,22 +39,67 @@
 
 安装后，该插件附带的 skills / commands 即可在当前会话中使用。
 
-## 提交插件（TL;DR）
+## 快速提交指南
 
-请使用本市场内置的 **`official-plugins`** 插件，它包含两个 skill：
+完整流程通常 5–10 分钟即可走完。所有步骤都在 Claude Code 会话中通过 `official-plugins` 插件完成。
 
-- **`/official-plugins:package-plugin`** —— 交互式工作流，把你已有的任意组合（已写好的 skills、slash commands、agents、hooks、脚本、MCP server 配置；甚至什么都没有也行）打包成一个格式正确的 Claude Code 插件目录，最后会自动跑校验器。
-- **`/official-plugins:submit-plugin`** —— 对你的插件运行 **严格质量门禁**，通过后通过 `gh` 自动 fork 本仓库、给 `marketplace.json` 加条目、打开 PR。支持两种提交模式：**monorepo**（你的插件被复制到本仓库的 `plugins/<name>/` 下）与 **external**（你的插件保存在你自己的仓库里，PR 只往 `marketplace.json` 里加一条指向你仓库的条目）。
+### 第 1 步 —— 一次性安装
 
 ```
-1. /plugin marketplace add mastersamasama/master-plugin-repository
-2. /plugin install official-plugins@master-plugin-repository
-3. /reload-plugins
-4. /official-plugins:package-plugin     ← 回答 5–8 个问题
-5. /official-plugins:submit-plugin      ← 回答 3–5 个问题，自动开 PR
+/plugin marketplace add mastersamasama/master-plugin-repository
+/plugin install official-plugins@master-plugin-repository
+/reload-plugins
 ```
 
-60 秒入门请看 [`plugins/official-plugins/QUICKSTART.md`](./plugins/official-plugins/QUICKSTART.md)，完整 skill 说明请看 [`plugins/official-plugins/README.md`](./plugins/official-plugins/README.md)。
+每台机器只需要做一次。后续提交直接从第 2 步开始。
+
+### 第 2 步 —— 打包你的插件
+
+```
+/official-plugins:package-plugin
+```
+
+这个 skill 会引导你完成：
+
+- **"What do you already have?（你已经有什么？）"**（多选）—— 任意组合：已有的 skill 目录、零散的 `SKILL.md` 文件、slash command `.md` 文件、agent 定义、hooks（`hooks.json` 或脚本）、MCP server 配置、相关脚本，或者 **"Nothing — start from a template（什么都没有，从模板开始）"**（这会直接复制内置的 `examples/minimal-plugin/` 或 `examples/multi-component-plugin/` 作为起点）。
+- **插件元数据** —— `name`（kebab-case）、`description`、`author`（默认从 `git config user.name` / `user.email` 取）、`version`、`keywords`、`category`，以及新插件的目标目录（默认 `<当前目录>/<plugin-name>`）。
+- **组件吸收** —— 对于你选中的每种组件类型，skill 会询问源路径，把文件复制到正确的子目录（`skills/`、`commands/`、`agents/`、`hooks/`、`scripts/`），并把内部引用重写为 `${CLAUDE_PLUGIN_ROOT}` 形式。
+
+skill 会基于模板生成 `plugin.json` 和 `README.md`，跑一次校验器（非严格模式 —— 警告允许迭代），并把恢复状态写到 `<target>/.package-plugin.state.json`，以便中断后能继续。
+
+### 第 3 步 —— 提交
+
+```
+/official-plugins:submit-plugin
+```
+
+这个 skill 在做任何对外可见的操作之前会先执行严格门禁：
+
+1. **定位插件** —— 询问插件目录路径（默认是 `package-plugin` 刚生成的目录；如果存在 `<plugin>/.package-plugin.state.json` 则自动预填元数据）。
+2. **执行严格质量门禁** —— 对你的插件运行 `validate.mjs --strict`。任何格式或质量问题都会**阻断**提交（具体拦截规则见下一节）。被拦截时，会让你回去跑 `package-plugin` 修复，再重新调用本 skill。
+3. **询问 "要先做一次 dry run 吗？"** —— **强烈建议第一次提交时使用。** Dry-run 会拉取线上的 `marketplace.json`，构造合并后的版本并校验（捕获重名等冲突），展示即将生成的 commit message 和 PR 标题/正文，然后**不 fork、不 push 直接停止**。Dry-run 不需要 `gh` CLI。
+4. **询问提交模式**（仅真实提交）：
+   - **monorepo** —— 你的插件被复制到本市场的 `plugins/<plugin-name>/` 下。PR 体积更小，推荐默认。
+   - **external whole-repo** —— 你的插件本身就是一个 GitHub 仓库（`.claude-plugin/plugin.json` 在仓库根目录）。PR 只往 `marketplace.json` 里加一条指向你仓库的条目。
+   - **external subdir** —— 你的插件位于一个更大仓库的子目录里。PR 只加一条指向那个子目录的条目。
+5. **检查 `gh` CLI** —— 跑 `gh --version` 和 `gh auth status`。如果未安装/未登录，会打印对应的安装/登录命令并停止。
+6. **fork → 建分支 → 应用变更 → fork 内再校验 → commit → push → 开 PR** —— skill 会 fork `master-plugin-repository`，新建分支 `submit/<plugin-name>`，应用变更（monorepo 模式下复制插件目录；external 模式下只编辑 `marketplace.json`），在 fork 内再跑一次校验，commit，push，最后通过 `gh pr create` 用 PR 模板填好正文开 PR。
+7. **打印 PR URL**，并告诉你 CI 接下来会做什么。
+
+### 第 4 步 —— CI 自动校验你的 PR
+
+GitHub Actions 会在几十秒内对你的 PR 跑 `validate.mjs --all`。如果检查失败，本地修复后 push 到你的 `submit/<plugin-name>` 分支即可 —— PR 会自动更新。**修订时不要新开 PR。**
+
+### 第 5 步 —— 评审合入
+
+评审会逐项核对 PR 模板的勾选框（无密钥、合规、元数据齐全），然后合入。合入后你的插件就在市场里了，其他参赛者就可以安装：
+
+```
+/plugin marketplace update master-plugin-repository
+/plugin install <你的插件名>@master-plugin-repository
+```
+
+> **更短的版本**：60 秒压缩版请看 [`plugins/official-plugins/QUICKSTART.md`](./plugins/official-plugins/QUICKSTART.md)，按 skill 拆分的完整说明请看 [`plugins/official-plugins/README.md`](./plugins/official-plugins/README.md)。
 
 ## `submit-plugin` 会拦截哪些问题
 

@@ -39,22 +39,67 @@ Pick a plugin from the list and run:
 
 The plugin's skills/commands are then invokable in your current session.
 
-## Submit a plugin (TL;DR)
+## Quick submission guide
 
-Use the **`official-plugins`** plugin (shipped inside this marketplace). It contains two skills:
+End-to-end takes 5–10 minutes for most submissions. The whole flow runs inside any Claude Code session via the `official-plugins` plugin.
 
-- **`/official-plugins:package-plugin`** — interactive workflow that takes whatever you have (existing skills, slash commands, agents, hooks, scripts, MCP server configs, or any combination — even nothing at all) and turns it into a properly-formed Claude Code plugin directory. Runs the validator at the end.
-- **`/official-plugins:submit-plugin`** — runs the **strict quality gate** against your plugin and, if it passes, opens a GitHub PR via `gh` to register your plugin in `marketplace.json`. Supports both **monorepo** mode (your plugin gets copied into `plugins/<name>/` here) and **external** mode (your plugin lives in your own repo and the PR only adds a marketplace entry).
+### Step 1 — One-time setup
 
 ```
-1. /plugin marketplace add mastersamasama/master-plugin-repository
-2. /plugin install official-plugins@master-plugin-repository
-3. /reload-plugins
-4. /official-plugins:package-plugin     ← answer 5–8 questions
-5. /official-plugins:submit-plugin      ← answer 3–5 questions, opens PR
+/plugin marketplace add mastersamasama/master-plugin-repository
+/plugin install official-plugins@master-plugin-repository
+/reload-plugins
 ```
 
-See [`plugins/official-plugins/QUICKSTART.md`](./plugins/official-plugins/QUICKSTART.md) for the 60-second card and [`plugins/official-plugins/README.md`](./plugins/official-plugins/README.md) for the full skill reference.
+You only need to do this once per machine. Subsequent submissions skip straight to step 2.
+
+### Step 2 — Package your plugin
+
+```
+/official-plugins:package-plugin
+```
+
+The skill walks you through:
+
+- **"What do you already have?"** (multi-select) — pick any combination: existing skill directories, loose `SKILL.md` files, slash command `.md` files, agent definitions, hooks (`hooks.json` or scripts), MCP server configs, supporting scripts, or **"Nothing — start from a template"** (which copies the bundled `examples/minimal-plugin/` or `examples/multi-component-plugin/` as your starter).
+- **Plugin metadata** — `name` (kebab-case), `description`, `author` (defaults from `git config user.name` / `user.email`), `version`, `keywords`, `category`, and the target directory for the new plugin (default: `<cwd>/<plugin-name>`).
+- **Component ingest** — for each component type you selected, the skill asks for source paths and copies the files into the right subdirs (`skills/`, `commands/`, `agents/`, `hooks/`, `scripts/`), rewriting any internal references to use `${CLAUDE_PLUGIN_ROOT}`.
+
+The skill generates `plugin.json` and `README.md` from templates, runs the validator (non-strict — warnings let you iterate), and saves resume state to `<target>/.package-plugin.state.json` so you can pick up later if interrupted.
+
+### Step 3 — Submit
+
+```
+/official-plugins:submit-plugin
+```
+
+The skill executes a strict gate before any externally visible action:
+
+1. **Locates the plugin** — asks for the directory path (defaults to whatever `package-plugin` produced; pre-fills metadata from `<plugin>/.package-plugin.state.json` if present).
+2. **Runs the strict quality gate** — `validate.mjs --strict` over your plugin. **Blocks** on any format or quality failure (see the next section). If blocked, it tells you to run `package-plugin` to fix, then re-invoke.
+3. **Asks "Dry run first?"** — **Highly recommended for your first submission.** Dry-run fetches the live `marketplace.json`, builds the proposed merged version, validates against it (catching duplicate plugin names), shows the planned commit message and PR title/body, then **stops without forking or pushing**. Dry-run doesn't need `gh` CLI installed.
+4. **Asks submission mode** (real-submission only):
+   - **monorepo** — your plugin is copied into `plugins/<plugin-name>/` of this marketplace. Smaller surface area; good default.
+   - **external whole-repo** — your plugin IS its own GitHub repo (`.claude-plugin/plugin.json` at the repo root). PR only adds a marketplace entry pointing at your repo.
+   - **external subdir** — your plugin is a subdirectory of a larger repo. PR adds an entry pointing at that subdirectory.
+5. **Checks `gh` CLI** — runs `gh --version` and `gh auth status`. If missing, prints exact install / login commands and stops.
+6. **Fork + branch + apply + validate + commit + push + PR** — forks `master-plugin-repository`, creates branch `submit/<plugin-name>`, applies the changes (copies the plugin in monorepo mode; only edits `marketplace.json` in external modes), validates again inside the fork, commits, pushes, opens the PR via `gh pr create` with the body filled in from the PR template.
+7. **Prints the PR URL** and tells you what to expect from CI.
+
+### Step 4 — CI validates your PR
+
+GitHub Actions runs `validate.mjs --all` on your PR within ~30 seconds. If checks fail, fix locally and push to your `submit/<plugin-name>` branch — the PR updates automatically. **Don't open a new PR for revisions.**
+
+### Step 5 — Reviewer merges
+
+A reviewer checks the PR template checkboxes (no secrets, license compliance, valid metadata) and merges. Your plugin is live in the marketplace and installable by other participants:
+
+```
+/plugin marketplace update master-plugin-repository
+/plugin install <your-plugin-name>@master-plugin-repository
+```
+
+> **Even shorter**: see [`plugins/official-plugins/QUICKSTART.md`](./plugins/official-plugins/QUICKSTART.md) for the 60-second condensed version, or [`plugins/official-plugins/README.md`](./plugins/official-plugins/README.md) for the full per-skill reference.
 
 ## What `submit-plugin` blocks on
 
