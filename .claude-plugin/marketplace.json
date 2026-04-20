@@ -114,6 +114,30 @@
         "signals"
       ],
       "source": "./plugins/sentryx"
+    },
+    {
+      "name": "xiake",
+      "description": "侠客擂台 — AI-native wuxia 3v3 chain game with 7 schools, 12 stages, PVP arena, gacha economy",
+      "version": "0.1.0",
+      "author": {
+        "name": "PAtrickpp33"
+      },
+      "category": "other",
+      "keywords": [
+        "okx",
+        "hackathon",
+        "game",
+        "wuxia",
+        "web3",
+        "onchain"
+      ],
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/PAtrickpp33/Xiake-onchain.git",
+        "path": "xiake",
+        "ref": "master",
+        "sha": "488cd88a1574c718330e81e6359ff5885bf87997"
+      }
     }
   ]
 }
